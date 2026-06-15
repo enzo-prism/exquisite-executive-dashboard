@@ -2,6 +2,8 @@
 
 Public executive dashboard for Michael Churchill and Exquisite Dentistry. It combines a local GA4 snapshot, Google Search Console snapshot, and a GitHub-reviewed website-change timeline.
 
+Production: <https://exquisite-executive-dashboard.vercel.app/>
+
 ## Stack
 
 - Next.js App Router
@@ -52,4 +54,34 @@ SOURCE_GITHUB_REPO=enzo-prism/exquisite-dentistry
 
 ## Deployment
 
-The project is deployed as `exquisite-executive-dashboard` on Vercel. Refresh data locally, commit the updated JSON snapshot, push to `main`, then deploy to production.
+The project is deployed as `exquisite-executive-dashboard` on Vercel with the Next.js framework preset.
+
+Refresh data locally, commit the updated JSON snapshot, push to `main`, then deploy to production:
+
+```bash
+npm run refresh:data
+npm run lint
+npm run build
+git add .
+git commit -m "Refresh executive dashboard snapshot"
+git push
+vercel deploy --prod --yes --project exquisite-executive-dashboard
+```
+
+The Vercel project is connected to `enzo-prism/exquisite-executive-dashboard`.
+
+## Verification
+
+Current implementation checks:
+
+- `npm run refresh:data`
+- `npm run lint`
+- `npm run build`
+- Production HTTP 200 at `https://exquisite-executive-dashboard.vercel.app/`
+- Browser check confirms 3 rendered chart surfaces
+- Browser check confirms timeline cards and detail dialog contain no visible date/time strings
+- Snapshot reconciliation confirms displayed GA4/GSC KPI totals match `src/data/dashboard-snapshot.json`
+
+## Known Caveat
+
+`npm audit --audit-level=moderate` currently reports a moderate `postcss` advisory through the installed Next.js package. The suggested `npm audit fix --force` would downgrade Next.js to an old breaking version, so this project keeps the current create-next-app/Next.js stack and treats the advisory as an upstream dependency caveat.
