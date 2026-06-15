@@ -55,6 +55,7 @@ export type TimelineFile = {
 export type TimelineItem = {
   id: string;
   order: number;
+  ageDays: number;
   sha: string;
   title: string;
   category: string;
@@ -66,6 +67,24 @@ export type TimelineItem = {
   deletions: number;
   fileDetails: TimelineFile[];
   bullets: string[];
+};
+
+export type WindowKey = "30" | "60" | "90";
+
+export type DashboardWindow = {
+  days: number;
+  range: {
+    start: string;
+    end: string;
+  };
+  kpis: Kpi[];
+  trafficTrend: DailyTrafficRow[];
+  channelMix: ChannelRow[];
+  landingPages: LandingPageRow[];
+  gscQueries: SearchRow[];
+  gscPages: SearchRow[];
+  gscQueryPages: SearchRow[];
+  timeline: TimelineItem[];
 };
 
 export type DashboardSnapshot = {
@@ -81,13 +100,8 @@ export type DashboardSnapshot = {
       days: number;
     };
     commitWindowDays: number;
+    defaultWindowDays: number;
+    availableWindowDays: number[];
   };
-  kpis: Kpi[];
-  trafficTrend: DailyTrafficRow[];
-  channelMix: ChannelRow[];
-  landingPages: LandingPageRow[];
-  gscQueries: SearchRow[];
-  gscPages: SearchRow[];
-  gscQueryPages: SearchRow[];
-  timeline: TimelineItem[];
+  windows: Record<WindowKey, DashboardWindow>;
 };

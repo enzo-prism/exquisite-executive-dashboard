@@ -14,12 +14,11 @@ const gscSite = process.env.GSC_SITE ?? "sc-domain:exquisitedentistryla.com";
 const githubRepo =
   process.env.SOURCE_GITHUB_REPO ?? "enzo-prism/exquisite-dentistry";
 
+const dayMs = 24 * 60 * 60 * 1000;
+const windowDays = [30, 60, 90];
 const today = new Date();
 const endDate = shiftLocalDate(today, -1);
-const startDate = shiftLocalDate(endDate, -29);
-const previousEndDate = shiftLocalDate(startDate, -1);
-const previousStartDate = shiftLocalDate(previousEndDate, -29);
-const commitSince = shiftLocalDate(today, -60);
+const maxCommitWindowDays = Math.max(...windowDays);
 
 function shiftLocalDate(date, days) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
@@ -30,6 +29,21 @@ function dateString(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function rangeFor(days) {
+  const startDate = shiftLocalDate(endDate, -(days - 1));
+  const previousEndDate = shiftLocalDate(startDate, -1);
+  const previousStartDate = shiftLocalDate(previousEndDate, -(days - 1));
+
+  return {
+    days,
+    start: dateString(startDate),
+    end: dateString(endDate),
+    previousStart: dateString(previousStartDate),
+    previousEnd: dateString(previousEndDate),
+    startDate,
+  };
 }
 
 function labelDate(value) {
@@ -48,7 +62,7 @@ function runJson(command, args) {
   const output = execFileSync(command, args, {
     cwd: root,
     encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 40,
+    maxBuffer: 1024 * 1024 * 60,
     stdio: ["ignore", "pipe", "pipe"],
   });
   return JSON.parse(output);
@@ -296,140 +310,244 @@ function sanitizeTimelineText(value) {
     .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, "[time]");
 }
 
-const start = dateString(startDate);
-const end = dateString(endDate);
-const previousStart = dateString(previousStartDate);
-const previousEnd = dateString(previousEndDate);
+function buildTrafficTrend(gaDaily, gscDaily) {
+  const gaByDate = new Map(
+    gaDaily.map((row) => {
+      const date = `${row.date.slice(0, 4)}-${row.date.slice(4, 6)}-${row.date.slice(6, 8)}`;
+      return [date, row];
+    }),
+  );
+  const gscByDate = new Map(gscDaily.map((row) => [row.date, row]));
+  const allDates = Array.from(new Set([...gaByDate.keys(), ...gscByDate.keys()])).sort();
 
-const gaMetrics = ["activeUsers", "sessions", "totalUsers", "eventCount", "conversions"];
-const gaDaily = parseGa(
-  gaReport({ from: start, to: end, metrics: gaMetrics, dimensions: ["date"] }),
-);
-const gaPreviousDaily = parseGa(
-  gaReport({ from: previousStart, to: previousEnd, metrics: gaMetrics, dimensions: ["date"] }),
-);
-const channels = parseGa(
-  gaReport({
-    from: start,
-    to: end,
-    metrics: gaMetrics,
-    dimensions: ["sessionDefaultChannelGroup"],
-    max: "100",
-  }),
-);
-const landingPages = parseGa(
-  gaReport({
-    from: start,
-    to: end,
-    metrics: ["activeUsers", "sessions", "conversions"],
-    dimensions: ["landingPagePlusQueryString"],
-    max: "20",
-  }),
-);
-
-const gscDaily = parseGsc(
-  gscQuery({ from: start, to: end, dimensions: ["DATE"], max: "25000" }),
-  ["DATE"],
-);
-const gscPreviousDaily = parseGsc(
-  gscQuery({ from: previousStart, to: previousEnd, dimensions: ["DATE"], max: "25000" }),
-  ["DATE"],
-);
-const gscQueries = parseGsc(
-  gscQuery({ from: start, to: end, dimensions: ["QUERY"], max: "20" }),
-  ["QUERY"],
-);
-const gscPages = parseGsc(
-  gscQuery({ from: start, to: end, dimensions: ["PAGE"], max: "20" }),
-  ["PAGE"],
-);
-const gscQueryPages = parseGsc(
-  gscQuery({ from: start, to: end, dimensions: ["QUERY", "PAGE"], max: "30" }),
-  ["QUERY", "PAGE"],
-);
-
-const gaByDate = new Map(
-  gaDaily.map((row) => {
-    const date = `${row.date.slice(0, 4)}-${row.date.slice(4, 6)}-${row.date.slice(6, 8)}`;
-    return [date, row];
-  }),
-);
-const gscByDate = new Map(gscDaily.map((row) => [row.date, row]));
-const allDates = Array.from(new Set([...gaByDate.keys(), ...gscByDate.keys()])).sort();
-const trafficTrend = allDates.map((date) => {
-  const ga = gaByDate.get(date) ?? {};
-  const gsc = gscByDate.get(date) ?? {};
-  return {
-    date,
-    label: labelDate(date),
-    activeUsers: Math.round(Number(ga.activeUsers ?? 0)),
-    sessions: Math.round(Number(ga.sessions ?? 0)),
-    conversions: Math.round(Number(ga.conversions ?? 0)),
-    clicks: Math.round(Number(gsc.clicks ?? 0)),
-    impressions: Math.round(Number(gsc.impressions ?? 0)),
-  };
-});
-
-const currentSessions = sum(gaDaily, "sessions");
-const channelMix = channels
-  .map((row) => ({
-    channel: row.sessionDefaultChannelGroup || "Unassigned",
-    activeUsers: Math.round(Number(row.activeUsers ?? 0)),
-    sessions: Math.round(Number(row.sessions ?? 0)),
-    conversions: Math.round(Number(row.conversions ?? 0)),
-    share: currentSessions ? Number((Number(row.sessions ?? 0) / currentSessions).toFixed(4)) : 0,
-  }))
-  .sort((a, b) => b.sessions - a.sessions);
-const channelSessionTotal = sum(channelMix, "sessions");
-if (channelSessionTotal < currentSessions) {
-  channelMix.push({
-    channel: "Other / thresholded",
-    activeUsers: 0,
-    sessions: currentSessions - channelSessionTotal,
-    conversions: 0,
-    share: Number(((currentSessions - channelSessionTotal) / currentSessions).toFixed(4)),
+  return allDates.map((date) => {
+    const ga = gaByDate.get(date) ?? {};
+    const gsc = gscByDate.get(date) ?? {};
+    return {
+      date,
+      label: labelDate(date),
+      activeUsers: Math.round(Number(ga.activeUsers ?? 0)),
+      sessions: Math.round(Number(ga.sessions ?? 0)),
+      conversions: Math.round(Number(ga.conversions ?? 0)),
+      clicks: Math.round(Number(gsc.clicks ?? 0)),
+      impressions: Math.round(Number(gsc.impressions ?? 0)),
+    };
   });
 }
 
-const landingPageRows = landingPages.map((row) => ({
-  path: cleanPath(row.landingPagePlusQueryString),
-  activeUsers: Math.round(Number(row.activeUsers ?? 0)),
-  sessions: Math.round(Number(row.sessions ?? 0)),
-  conversions: Math.round(Number(row.conversions ?? 0)),
-}));
+function buildWindow(range, allTimeline) {
+  const gaMetrics = ["activeUsers", "sessions", "totalUsers", "eventCount", "conversions"];
+  const gaDaily = parseGa(
+    gaReport({ from: range.start, to: range.end, metrics: gaMetrics, dimensions: ["date"] }),
+  );
+  const gaPreviousDaily = parseGa(
+    gaReport({
+      from: range.previousStart,
+      to: range.previousEnd,
+      metrics: gaMetrics,
+      dimensions: ["date"],
+    }),
+  );
+  const channels = parseGa(
+    gaReport({
+      from: range.start,
+      to: range.end,
+      metrics: gaMetrics,
+      dimensions: ["sessionDefaultChannelGroup"],
+      max: "100",
+    }),
+  );
+  const landingPages = parseGa(
+    gaReport({
+      from: range.start,
+      to: range.end,
+      metrics: ["activeUsers", "sessions", "conversions"],
+      dimensions: ["landingPagePlusQueryString"],
+      max: "30",
+    }),
+  );
 
-const commits = ghApi(
-  `repos/${githubRepo}/commits?since=${dateString(commitSince)}T00:00:00Z&per_page=100`,
+  const gscDaily = parseGsc(
+    gscQuery({ from: range.start, to: range.end, dimensions: ["DATE"], max: "25000" }),
+    ["DATE"],
+  );
+  const gscPreviousDaily = parseGsc(
+    gscQuery({
+      from: range.previousStart,
+      to: range.previousEnd,
+      dimensions: ["DATE"],
+      max: "25000",
+    }),
+    ["DATE"],
+  );
+  const gscQueries = parseGsc(
+    gscQuery({ from: range.start, to: range.end, dimensions: ["QUERY"], max: "30" }),
+    ["QUERY"],
+  );
+  const gscPages = parseGsc(
+    gscQuery({ from: range.start, to: range.end, dimensions: ["PAGE"], max: "30" }),
+    ["PAGE"],
+  );
+  const gscQueryPages = parseGsc(
+    gscQuery({ from: range.start, to: range.end, dimensions: ["QUERY", "PAGE"], max: "40" }),
+    ["QUERY", "PAGE"],
+  );
+
+  const currentSessions = sum(gaDaily, "sessions");
+  const channelMix = channels
+    .map((row) => ({
+      channel: row.sessionDefaultChannelGroup || "Unassigned",
+      activeUsers: Math.round(Number(row.activeUsers ?? 0)),
+      sessions: Math.round(Number(row.sessions ?? 0)),
+      conversions: Math.round(Number(row.conversions ?? 0)),
+      share: currentSessions ? Number((Number(row.sessions ?? 0) / currentSessions).toFixed(4)) : 0,
+    }))
+    .sort((a, b) => b.sessions - a.sessions);
+  const channelSessionTotal = sum(channelMix, "sessions");
+  if (channelSessionTotal < currentSessions) {
+    channelMix.push({
+      channel: "Other / thresholded",
+      activeUsers: 0,
+      sessions: currentSessions - channelSessionTotal,
+      conversions: 0,
+      share: Number(((currentSessions - channelSessionTotal) / currentSessions).toFixed(4)),
+    });
+  }
+
+  return {
+    days: range.days,
+    range: {
+      start: range.start,
+      end: range.end,
+    },
+    kpis: [
+      kpi({
+        label: "Active users",
+        current: sum(gaDaily, "activeUsers"),
+        previous: sum(gaPreviousDaily, "activeUsers"),
+        format: "number",
+        note: "GA4 active users",
+      }),
+      kpi({
+        label: "Sessions",
+        current: currentSessions,
+        previous: sum(gaPreviousDaily, "sessions"),
+        format: "number",
+        note: "GA4 sessions",
+      }),
+      kpi({
+        label: "Conversions",
+        current: sum(gaDaily, "conversions"),
+        previous: sum(gaPreviousDaily, "conversions"),
+        format: "number",
+        note: "GA4 conversions",
+      }),
+      kpi({
+        label: "Search clicks",
+        current: sum(gscDaily, "clicks"),
+        previous: sum(gscPreviousDaily, "clicks"),
+        format: "number",
+        note: "Google Search Console clicks",
+      }),
+      kpi({
+        label: "Search impressions",
+        current: sum(gscDaily, "impressions"),
+        previous: sum(gscPreviousDaily, "impressions"),
+        format: "number",
+        note: "Google Search Console impressions",
+      }),
+      kpi({
+        label: "Avg. search position",
+        current: weightedPosition(gscDaily),
+        previous: weightedPosition(gscPreviousDaily),
+        format: "decimal",
+        note: "Weighted by impressions",
+        lowerIsBetter: true,
+      }),
+    ],
+    trafficTrend: buildTrafficTrend(gaDaily, gscDaily),
+    channelMix,
+    landingPages: landingPages.map((row) => ({
+      path: cleanPath(row.landingPagePlusQueryString),
+      activeUsers: Math.round(Number(row.activeUsers ?? 0)),
+      sessions: Math.round(Number(row.sessions ?? 0)),
+      conversions: Math.round(Number(row.conversions ?? 0)),
+    })),
+    gscQueries: gscQueries.map((row) => ({
+      query: row.query,
+      clicks: Math.round(row.clicks),
+      impressions: Math.round(row.impressions),
+      ctr: Number(row.ctr.toFixed(4)),
+      position: Number(row.position.toFixed(1)),
+    })),
+    gscPages: gscPages.map((row) => ({
+      page: cleanPath(row.page),
+      clicks: Math.round(row.clicks),
+      impressions: Math.round(row.impressions),
+      ctr: Number(row.ctr.toFixed(4)),
+      position: Number(row.position.toFixed(1)),
+    })),
+    gscQueryPages: gscQueryPages.map((row) => ({
+      query: row.query,
+      page: cleanPath(row.page),
+      clicks: Math.round(row.clicks),
+      impressions: Math.round(row.impressions),
+      ctr: Number(row.ctr.toFixed(4)),
+      position: Number(row.position.toFixed(1)),
+    })),
+    timeline: allTimeline.filter((item) => item.ageDays <= range.days),
+  };
+}
+
+function buildTimeline() {
+  const commitSince = shiftLocalDate(today, -maxCommitWindowDays);
+  const commits = ghApi(
+    `repos/${githubRepo}/commits?since=${dateString(commitSince)}T00:00:00Z&per_page=100`,
+  );
+
+  return commits
+    .map((commit, index) => {
+      const detail = ghApi(`repos/${githubRepo}/commits/${commit.sha}`);
+      const files = (detail.files ?? []).map((file) => ({
+        filename: sanitizeTimelineText(file.filename),
+        status: file.status,
+        additions: Number(file.additions ?? 0),
+        deletions: Number(file.deletions ?? 0),
+        changes: Number(file.changes ?? 0),
+      }));
+      const title = commit.commit.message.split("\n")[0];
+      const classification = categoryFor(title, files);
+      const commitDate = new Date(commit.commit.author.date);
+      const ageDays = Math.max(0, Math.floor((today.getTime() - commitDate.getTime()) / dayMs));
+
+      return {
+        id: commit.sha,
+        order: index + 1,
+        ageDays,
+        sha: commit.sha.slice(0, 7),
+        title: classification.summary,
+        category: classification.category,
+        impactArea: classification.impactArea,
+        summary: humanizeTitle(title),
+        impact: classification.impact,
+        filesChanged: files.length,
+        additions: Number(detail.stats?.additions ?? 0),
+        deletions: Number(detail.stats?.deletions ?? 0),
+        fileDetails: files,
+        bullets: bulletsFor(detail, files),
+      };
+    })
+    .sort((a, b) => a.order - b.order);
+}
+
+const allTimeline = buildTimeline();
+const windows = Object.fromEntries(
+  windowDays.map((days) => {
+    const range = rangeFor(days);
+    return [String(days), buildWindow(range, allTimeline)];
+  }),
 );
-const timeline = commits
-  .map((commit, index) => {
-    const detail = ghApi(`repos/${githubRepo}/commits/${commit.sha}`);
-    const files = (detail.files ?? []).map((file) => ({
-      filename: sanitizeTimelineText(file.filename),
-      status: file.status,
-      additions: Number(file.additions ?? 0),
-      deletions: Number(file.deletions ?? 0),
-      changes: Number(file.changes ?? 0),
-    }));
-    const title = commit.commit.message.split("\n")[0];
-    const classification = categoryFor(title, files);
-    return {
-      id: commit.sha,
-      order: index + 1,
-      sha: commit.sha.slice(0, 7),
-      title: classification.summary,
-      category: classification.category,
-      impactArea: classification.impactArea,
-      summary: humanizeTitle(title),
-      impact: classification.impact,
-      filesChanged: files.length,
-      additions: Number(detail.stats?.additions ?? 0),
-      deletions: Number(detail.stats?.deletions ?? 0),
-      fileDetails: files,
-      bullets: bulletsFor(detail, files),
-    };
-  })
-  .sort((a, b) => a.order - b.order);
+const defaultRange = rangeFor(30);
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
@@ -439,83 +557,15 @@ const snapshot = {
     gscSite,
     githubRepo,
     analyticsRange: {
-      start,
-      end,
+      start: defaultRange.start,
+      end: defaultRange.end,
       days: 30,
     },
-    commitWindowDays: 60,
+    commitWindowDays: maxCommitWindowDays,
+    defaultWindowDays: 30,
+    availableWindowDays: windowDays,
   },
-  kpis: [
-    kpi({
-      label: "Active users",
-      current: sum(gaDaily, "activeUsers"),
-      previous: sum(gaPreviousDaily, "activeUsers"),
-      format: "number",
-      note: "GA4 active users",
-    }),
-    kpi({
-      label: "Sessions",
-      current: currentSessions,
-      previous: sum(gaPreviousDaily, "sessions"),
-      format: "number",
-      note: "GA4 sessions",
-    }),
-    kpi({
-      label: "Conversions",
-      current: sum(gaDaily, "conversions"),
-      previous: sum(gaPreviousDaily, "conversions"),
-      format: "number",
-      note: "GA4 conversions",
-    }),
-    kpi({
-      label: "Search clicks",
-      current: sum(gscDaily, "clicks"),
-      previous: sum(gscPreviousDaily, "clicks"),
-      format: "number",
-      note: "Google Search Console clicks",
-    }),
-    kpi({
-      label: "Search impressions",
-      current: sum(gscDaily, "impressions"),
-      previous: sum(gscPreviousDaily, "impressions"),
-      format: "number",
-      note: "Google Search Console impressions",
-    }),
-    kpi({
-      label: "Avg. search position",
-      current: weightedPosition(gscDaily),
-      previous: weightedPosition(gscPreviousDaily),
-      format: "decimal",
-      note: "Weighted by impressions",
-      lowerIsBetter: true,
-    }),
-  ],
-  trafficTrend,
-  channelMix,
-  landingPages: landingPageRows,
-  gscQueries: gscQueries.map((row) => ({
-    query: row.query,
-    clicks: Math.round(row.clicks),
-    impressions: Math.round(row.impressions),
-    ctr: Number(row.ctr.toFixed(4)),
-    position: Number(row.position.toFixed(1)),
-  })),
-  gscPages: gscPages.map((row) => ({
-    page: cleanPath(row.page),
-    clicks: Math.round(row.clicks),
-    impressions: Math.round(row.impressions),
-    ctr: Number(row.ctr.toFixed(4)),
-    position: Number(row.position.toFixed(1)),
-  })),
-  gscQueryPages: gscQueryPages.map((row) => ({
-    query: row.query,
-    page: cleanPath(row.page),
-    clicks: Math.round(row.clicks),
-    impressions: Math.round(row.impressions),
-    ctr: Number(row.ctr.toFixed(4)),
-    position: Number(row.position.toFixed(1)),
-  })),
-  timeline,
+  windows,
 };
 
 const outputPath = path.join(root, "src/data/dashboard-snapshot.json");
@@ -523,5 +573,5 @@ mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`);
 console.log(`Wrote ${path.relative(root, outputPath)}`);
 console.log(
-  `Snapshot: ${snapshot.kpis.length} KPIs, ${snapshot.trafficTrend.length} trend rows, ${snapshot.timeline.length} website changes.`,
+  `Snapshot: ${Object.keys(windows).length} windows, ${allTimeline.length} website changes across ${maxCommitWindowDays} days.`,
 );

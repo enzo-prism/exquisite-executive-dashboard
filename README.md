@@ -18,7 +18,8 @@ Production: <https://exquisite-executive-dashboard.vercel.app/>
 - GA4: `Exquisite Dentistry - Live`, `properties/498175984`
 - GSC: `sc-domain:exquisitedentistryla.com`
 - Website commits: `enzo-prism/exquisite-dentistry`
-- Timeline window: latest 60 days from the GitHub API
+- Dashboard windows: last 30, 60, and 90 days
+- Timeline source window: latest 90 days from the GitHub API
 
 Google and GitHub credentials are local-only. Vercel serves the committed snapshot at `src/data/dashboard-snapshot.json`; it does not run `gogcli` in production.
 
@@ -48,8 +49,10 @@ SOURCE_GITHUB_REPO=enzo-prism/exquisite-dentistry
 
 ## Timeline Rules
 
+- The top filter switches GA4, GSC, and website-update views between last 30, 60, and 90 days.
 - Most recent website changes appear first.
 - Cards do not show actual dates or times.
+- Website-update cards always render as a one-column list.
 - Clicking a card opens full details, including affected files and line-level GitHub change counts.
 
 ## Deployment
@@ -78,8 +81,9 @@ Current implementation checks:
 - `npm run lint`
 - `npm run build`
 - Production HTTP 200 at `https://exquisite-executive-dashboard.vercel.app/`
+- Browser check confirms the Last 30, Last 60, and Last 90 day filters update the dashboard.
 - Browser check confirms 3 rendered chart surfaces
-- Browser check confirms timeline cards and detail dialog contain no visible date/time strings
+- Browser check confirms timeline cards stay in a single-column list and detail dialogs contain no visible date/time strings
 - Snapshot reconciliation confirms displayed GA4/GSC KPI totals match `src/data/dashboard-snapshot.json`
 
 ## Known Caveat

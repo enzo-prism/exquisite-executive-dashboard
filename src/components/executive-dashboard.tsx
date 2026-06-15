@@ -3,17 +3,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Image from "next/image";
 import {
-  Activity,
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  CalendarDays,
   ChevronRight,
   FileCode2,
-  GitCommitHorizontal,
   Globe2,
   LineChart,
   MousePointerClick,
-  Search,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -34,6 +32,7 @@ import {
 } from "recharts";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -65,6 +64,7 @@ import type {
   LandingPageRow,
   SearchRow,
   TimelineItem,
+  WindowKey,
 } from "@/types/dashboard";
 
 const chartColors = ["#0f766e", "#2563eb", "#d97706", "#7c3aed", "#be123c"];
@@ -74,19 +74,25 @@ type ExecutiveDashboardProps = {
 };
 
 export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
-  const totals = {
-    activeUsers: snapshot.kpis.find((kpi) => kpi.label === "Active users")?.value ?? 0,
-    searchClicks: snapshot.kpis.find((kpi) => kpi.label === "Search clicks")?.value ?? 0,
-    commits: snapshot.timeline.length,
-  };
+  const availableWindows = snapshot.source.availableWindowDays
+    .map((days) => String(days))
+    .filter(isWindowKey);
+  const windowOptions =
+    availableWindows.length > 0 ? availableWindows : (["30", "60", "90"] satisfies WindowKey[]);
+  const configuredDefaultWindow = String(snapshot.source.defaultWindowDays);
+  const defaultWindow = isWindowKey(configuredDefaultWindow) ? configuredDefaultWindow : "30";
+  const [selectedWindow, setSelectedWindow] = useState<WindowKey>(
+    snapshot.windows[defaultWindow] ? defaultWindow : "30",
+  );
+  const activeWindow = snapshot.windows[selectedWindow] ?? snapshot.windows["30"];
 
   return (
     <main className="min-h-screen bg-[#f6f7f5] text-slate-950">
       <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-950 p-2">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-950 p-2">
                 <Image
                   src="/brand/exquisite-logo.webp"
                   alt="Exquisite Dentistry logo"
@@ -97,44 +103,21 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                 />
               </div>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className="rounded-sm">
-                    Public snapshot
-                  </Badge>
-                  <Badge variant="outline" className="rounded-sm border-teal-200 bg-teal-50 text-teal-800">
-                    Michael Churchill
-                  </Badge>
-                </div>
-                <h1 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
-                  Exquisite Dentistry Executive Dashboard
+                <Badge variant="outline" className="rounded-sm border-teal-200 bg-teal-50 text-teal-800">
+                  Michael Churchill
+                </Badge>
+                <h1 className="mt-2 text-xl font-semibold tracking-normal text-slate-950 sm:text-2xl">
+                  Exquisite Executive Dashboard
                 </h1>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-                  GA4, Google Search Console, and GitHub website-change visibility for the live Exquisite Dentistry site.
+                <p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">
+                  Demand, search performance, and recent website work in one view.
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-center">
-              <MiniStat label="Active users" value={formatValue(totals.activeUsers, "number")} />
-              <MiniStat label="Search clicks" value={formatValue(totals.searchClicks, "number")} />
-              <MiniStat label="Site updates" value={formatValue(totals.commits, "number")} />
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <SourcePill
-              icon={<Activity className="h-4 w-4" />}
-              label="GA4 property"
-              value={`${snapshot.source.ga4Name} (${snapshot.source.ga4Property})`}
-            />
-            <SourcePill
-              icon={<Search className="h-4 w-4" />}
-              label="Search Console"
-              value={snapshot.source.gscSite}
-            />
-            <SourcePill
-              icon={<GitCommitHorizontal className="h-4 w-4" />}
-              label="Website commits"
-              value={`${snapshot.source.githubRepo}, latest ${snapshot.source.commitWindowDays} days`}
+            <DateWindowFilter
+              onChange={setSelectedWindow}
+              options={windowOptions}
+              selectedWindow={selectedWindow}
             />
           </div>
         </div>
@@ -142,7 +125,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          {snapshot.kpis.map((kpi) => (
+          {activeWindow.kpis.map((kpi) => (
             <KpiCard key={kpi.label} kpi={kpi} />
           ))}
         </section>
@@ -161,7 +144,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="rounded-sm">
-                  {snapshot.source.analyticsRange.days} days
+                  Last {activeWindow.days} days
                 </Badge>
               </div>
             </CardHeader>
@@ -172,7 +155,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                     initialDimension={{ width: 700, height: 330 }}
                     minWidth={0}
                   >
-                    <AreaChart data={snapshot.trafficTrend} margin={{ left: 0, right: 10 }}>
+                    <AreaChart data={activeWindow.trafficTrend} margin={{ left: 0, right: 10 }}>
                       <defs>
                         <linearGradient id="users" x1="0" x2="0" y1="0" y2="1">
                           <stop offset="5%" stopColor="#0f766e" stopOpacity={0.35} />
@@ -244,14 +227,14 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                   >
                     <PieChart>
                       <Pie
-                        data={snapshot.channelMix.slice(0, 5)}
+                        data={activeWindow.channelMix.slice(0, 5)}
                         dataKey="sessions"
                         nameKey="channel"
                         innerRadius={54}
                         outerRadius={84}
                         paddingAngle={2}
                       >
-                        {snapshot.channelMix.slice(0, 5).map((row, index) => (
+                        {activeWindow.channelMix.slice(0, 5).map((row, index) => (
                           <Cell key={row.channel} fill={chartColors[index % chartColors.length]} />
                         ))}
                       </Pie>
@@ -261,7 +244,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                 </MountedChart>
               </div>
               <div className="grid gap-2">
-                {snapshot.channelMix.slice(0, 5).map((row, index) => (
+                {activeWindow.channelMix.slice(0, 5).map((row, index) => (
                   <div key={row.channel} className="flex items-center justify-between gap-3 text-sm">
                     <div className="flex min-w-0 items-center gap-2">
                       <span
@@ -285,12 +268,12 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
             icon={<Globe2 className="h-4 w-4 text-teal-700" />}
             title="Top Landing Pages"
             description="GA4 landing pages ranked by sessions."
-            rows={snapshot.landingPages}
+            rows={activeWindow.landingPages}
           />
           <SearchPerformanceCard
-            queries={snapshot.gscQueries}
-            pages={snapshot.gscPages}
-            queryPages={snapshot.gscQueryPages}
+            queries={activeWindow.gscQueries}
+            pages={activeWindow.gscPages}
+            queryPages={activeWindow.gscQueryPages}
           />
         </section>
 
@@ -311,7 +294,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                     minWidth={0}
                   >
                     <BarChart
-                      data={snapshot.gscPages.slice(0, 8).map((row) => ({
+                      data={activeWindow.gscPages.slice(0, 8).map((row) => ({
                         page: compactPath(row.page ?? "/"),
                         impressions: row.impressions,
                         clicks: row.clicks,
@@ -365,39 +348,45 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
           </Card>
         </section>
 
-        <TimelineSection timeline={snapshot.timeline} />
+        <TimelineSection days={activeWindow.days} timeline={activeWindow.timeline} />
       </div>
     </main>
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+function DateWindowFilter({
+  selectedWindow,
+  options,
+  onChange,
+}: {
+  selectedWindow: WindowKey;
+  options: WindowKey[];
+  onChange: (window: WindowKey) => void;
+}) {
   return (
-    <div className="min-w-[92px] px-2 py-1">
-      <div className="text-lg font-semibold tabular-nums text-slate-950">{value}</div>
-      <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{label}</div>
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-1.5 sm:w-fit">
+      <div className="flex items-center gap-1.5 px-2 text-xs font-medium text-slate-500">
+        <CalendarDays className="h-3.5 w-3.5" />
+        Window
+      </div>
+      {options.map((option) => (
+        <Button
+          className="h-8 rounded-sm px-3 text-xs"
+          key={option}
+          onClick={() => onChange(option)}
+          size="sm"
+          type="button"
+          variant={selectedWindow === option ? "default" : "ghost"}
+        >
+          Last {option} days
+        </Button>
+      ))}
     </div>
   );
 }
 
-function SourcePill({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-      <div className="text-slate-500">{icon}</div>
-      <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{label}</div>
-        <div className="truncate text-sm font-medium text-slate-900">{value}</div>
-      </div>
-    </div>
-  );
+function isWindowKey(value: string): value is WindowKey {
+  return value === "30" || value === "60" || value === "90";
 }
 
 function MountedChart({ children }: { children: ReactNode }) {
@@ -451,7 +440,7 @@ function RankingCard({
   description,
   rows,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
   rows: LandingPageRow[];
@@ -569,7 +558,7 @@ function SearchTable({
   );
 }
 
-function TimelineSection({ timeline }: { timeline: TimelineItem[] }) {
+function TimelineSection({ timeline, days }: { timeline: TimelineItem[]; days: number }) {
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
 
   return (
@@ -577,18 +566,23 @@ function TimelineSection({ timeline }: { timeline: TimelineItem[] }) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-normal text-slate-950">
-            Website Change Timeline
+            Website Updates
           </h2>
           <p className="text-sm leading-6 text-slate-600">
-            Most recent website updates appear first.
+            Most recent changes for the selected window appear first.
           </p>
         </div>
-        <Badge variant="outline" className="w-fit rounded-sm">
-          {timeline.length} GitHub updates reviewed
-        </Badge>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className="w-fit rounded-sm">
+            Last {days} days
+          </Badge>
+          <Badge variant="secondary" className="w-fit rounded-sm">
+            {timeline.length} updates reviewed
+          </Badge>
+        </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3">
         {timeline.map((item) => (
           <TimelineCard
             item={item}
@@ -619,11 +613,11 @@ function TimelineCard({
 }) {
   return (
     <button
-      className="group flex min-h-[156px] w-full flex-col justify-between rounded-md border border-slate-200 bg-white p-4 text-left shadow-none transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+      className="group grid w-full gap-3 rounded-md border border-slate-200 bg-white p-4 text-left shadow-none transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
       onClick={onSelect}
       type="button"
     >
-      <div>
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="rounded-sm bg-slate-950 text-white hover:bg-slate-950">
             {item.category}
@@ -642,7 +636,7 @@ function TimelineCard({
           {item.impact}
         </p>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+      <div className="flex items-center justify-between gap-3 text-xs text-slate-500 sm:flex-col sm:items-end sm:justify-center">
         <span>{item.filesChanged} files reviewed</span>
         <span className="inline-flex items-center gap-1 font-medium text-slate-700">
           Full details
