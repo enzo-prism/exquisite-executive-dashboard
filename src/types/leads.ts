@@ -26,6 +26,7 @@ export type ChatGptLead = {
   status: FollowUpStatus;
   becamePatient: boolean;
   example: boolean;
+  idempotencyKey?: string;
   createdAt: string;
   updatedAt: string;
 };

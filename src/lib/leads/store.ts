@@ -40,11 +40,19 @@ function writeLiveToDisk(leads: ChatGptLead[]) {
   );
 }
 
+function indexLeadKeys(lead: ChatGptLead) {
+  idempotencyIndex.set(leadIdentityKey(lead), lead.id);
+  if (lead.idempotencyKey) {
+    idempotencyIndex.set(lead.idempotencyKey, lead.id);
+  }
+}
+
 function ensureLiveCache() {
   if (liveCache) return liveCache;
   liveCache = readLiveFromDisk();
+  idempotencyIndex.clear();
   for (const lead of liveCache) {
-    idempotencyIndex.set(leadIdentityKey(lead), lead.id);
+    indexLeadKeys(lead);
   }
   return liveCache;
 }
@@ -83,10 +91,14 @@ export function insertLiveLead(lead: ChatGptLead, idempotencyKey: string) {
     return { lead: existing, created: false };
   }
 
-  const next = [lead, ...ensureLiveCache()];
-  idempotencyIndex.set(idempotencyKey, lead.id);
+  const stored: ChatGptLead = {
+    ...lead,
+    idempotencyKey: lead.idempotencyKey || idempotencyKey,
+  };
+  const next = [stored, ...ensureLiveCache()];
+  indexLeadKeys(stored);
   persistLive(next);
-  return { lead, created: true };
+  return { lead: stored, created: true };
 }
 
 export function getLeadById(id: string) {

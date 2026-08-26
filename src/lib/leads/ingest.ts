@@ -96,6 +96,17 @@ export function parseIngestPayload(input: LeadIngestInput): {
   const submittedAt = readSubmittedAt(input);
   const status = isFollowUpStatus(input.status) ? input.status : "new";
   const id = `lead-${randomUUID()}`;
+  const draft = {
+    id,
+    name,
+    email,
+    phone,
+    submittedAt,
+  };
+  const idempotencyKey =
+    asTrimmedString(input.idempotency_key) ||
+    asTrimmedString(input.idempotencyKey) ||
+    leadIdentityKey(draft);
 
   const lead: ChatGptLead = {
     id,
@@ -119,14 +130,10 @@ export function parseIngestPayload(input: LeadIngestInput): {
     becamePatient:
       readBoolean(input.became_patient) || readBoolean(input.becamePatient),
     example: false,
+    idempotencyKey,
     createdAt: now,
     updatedAt: now,
   };
-
-  const idempotencyKey =
-    asTrimmedString(input.idempotency_key) ||
-    asTrimmedString(input.idempotencyKey) ||
-    leadIdentityKey(lead);
 
   return { ok: true, lead, idempotencyKey };
 }

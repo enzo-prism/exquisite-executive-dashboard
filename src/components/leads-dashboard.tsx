@@ -90,27 +90,32 @@ export function LeadsDashboard({ examples }: LeadsDashboardProps) {
     setLoadingLive(true);
     setLoadError("");
 
-    const response = await fetch("/api/leads", {
-      headers: {
-        Authorization: `Bearer ${operatorKey}`,
-      },
-    });
+    try {
+      const response = await fetch("/api/leads", {
+        headers: {
+          Authorization: `Bearer ${operatorKey}`,
+        },
+      });
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      leads?: ChatGptLead[];
-    };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        leads?: ChatGptLead[];
+      };
 
-    setLoadingLive(false);
+      if (!response.ok) {
+        setUnlocked(false);
+        setLoadError(payload.error ?? "Could not unlock live leads");
+        return;
+      }
 
-    if (!response.ok) {
+      setLiveLeads(payload.leads ?? []);
+      setUnlocked(true);
+    } catch {
       setUnlocked(false);
-      setLoadError(payload.error ?? "Could not unlock live leads");
-      return;
+      setLoadError("Could not reach the leads API");
+    } finally {
+      setLoadingLive(false);
     }
-
-    setLiveLeads(payload.leads ?? []);
-    setUnlocked(true);
   }
 
   async function updateLead(
@@ -135,23 +140,26 @@ export function LeadsDashboard({ examples }: LeadsDashboardProps) {
     if (!unlocked || !operatorKey) return;
 
     setSavingId(lead.id);
-    const response = await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${operatorKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(patch),
-    });
-    const payload = (await response.json().catch(() => ({}))) as {
-      lead?: ChatGptLead;
-    };
-    setSavingId("");
+    try {
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${operatorKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patch),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        lead?: ChatGptLead;
+      };
 
-    if (response.ok && payload.lead) {
-      setLiveLeads((current) =>
-        current.map((row) => (row.id === payload.lead?.id ? payload.lead : row)),
-      );
+      if (response.ok && payload.lead) {
+        setLiveLeads((current) =>
+          current.map((row) => (row.id === payload.lead?.id ? payload.lead : row)),
+        );
+      }
+    } finally {
+      setSavingId("");
     }
   }
 
