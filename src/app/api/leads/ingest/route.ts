@@ -39,7 +39,7 @@ async function readBody(request: Request): Promise<LeadIngestInput> {
 export async function OPTIONS(request: Request) {
   return new Response(null, {
     status: 204,
-    headers: corsHeadersFor(request),
+    headers: corsHeadersFor(request, "ingest"),
   });
 }
 
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
   if (!ingestSecretConfigured()) {
     return jsonWithCors(
       request,
+      "ingest",
       {
         error: "LEADS_INGEST_SECRET is not configured",
       },
@@ -55,28 +56,29 @@ export async function POST(request: Request) {
   }
 
   if (!requestHasValidIngestSecret(request)) {
-    return jsonWithCors(request, { error: "Unauthorized" }, { status: 401 });
+    return jsonWithCors(request, "ingest", { error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await readBody(request);
 
   if (isHoneypot(body)) {
-    return jsonWithCors(request, { ok: true, ignored: "honeypot" });
+    return jsonWithCors(request, "ingest", { ok: true, ignored: "honeypot" });
   }
 
   const parsed = parseIngestPayload(body);
   if (!parsed.ok) {
-    return jsonWithCors(request, { error: parsed.error }, { status: 400 });
+    return jsonWithCors(request, "ingest", { error: parsed.error }, { status: 400 });
   }
 
   const existing = findLiveByIdempotencyKey(parsed.idempotencyKey);
   if (existing) {
-    return jsonWithCors(request, { ok: true, created: false, lead: existing });
+    return jsonWithCors(request, "ingest", { ok: true, created: false, lead: existing });
   }
 
   const result = insertLiveLead(parsed.lead, parsed.idempotencyKey);
   return jsonWithCors(
     request,
+    "ingest",
     { ok: true, created: result.created, lead: result.lead },
     { status: result.created ? 201 : 200 },
   );

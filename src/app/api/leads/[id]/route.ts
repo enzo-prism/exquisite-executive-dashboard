@@ -1,8 +1,8 @@
 import {
   corsHeadersFor,
-  ingestSecretConfigured,
   jsonWithCors,
-  requestHasValidIngestSecret,
+  operatorSecretConfigured,
+  requestHasValidOperatorSecret,
 } from "@/lib/leads/auth";
 import { isFollowUpStatus } from "@/lib/leads/ingest";
 import { getLeadById, updateLiveLead } from "@/lib/leads/store";
@@ -16,33 +16,38 @@ type RouteParams = {
 export async function OPTIONS(request: Request) {
   return new Response(null, {
     status: 204,
-    headers: corsHeadersFor(request),
+    headers: corsHeadersFor(request, "operator"),
   });
 }
 
 export async function PATCH(request: Request, context: RouteParams) {
-  if (!ingestSecretConfigured()) {
+  if (!operatorSecretConfigured()) {
     return jsonWithCors(
       request,
-      { error: "LEADS_INGEST_SECRET is not configured" },
+      "operator",
+      {
+        error:
+          "LEADS_OPERATOR_SECRET is not configured or matches LEADS_INGEST_SECRET",
+      },
       { status: 503 },
     );
   }
 
-  if (!requestHasValidIngestSecret(request)) {
-    return jsonWithCors(request, { error: "Unauthorized" }, { status: 401 });
+  if (!requestHasValidOperatorSecret(request)) {
+    return jsonWithCors(request, "operator", { error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const existing = getLeadById(id);
 
   if (!existing) {
-    return jsonWithCors(request, { error: "Lead not found" }, { status: 404 });
+    return jsonWithCors(request, "operator", { error: "Lead not found" }, { status: 404 });
   }
 
   if (existing.example) {
     return jsonWithCors(
       request,
+      "operator",
       { error: "EXAMPLE rows are read-only" },
       { status: 400 },
     );
@@ -52,7 +57,7 @@ export async function PATCH(request: Request, context: RouteParams) {
   try {
     body = await request.json();
   } catch {
-    return jsonWithCors(request, { error: "Invalid JSON" }, { status: 400 });
+    return jsonWithCors(request, "operator", { error: "Invalid JSON" }, { status: 400 });
   }
 
   const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
@@ -60,15 +65,13 @@ export async function PATCH(request: Request, context: RouteParams) {
   const becamePatient = payload.becamePatient ?? payload.became_patient;
 
   if (status !== undefined && !isFollowUpStatus(status)) {
-    return jsonWithCors(request, { error: "Invalid status" }, { status: 400 });
+    return jsonWithCors(request, "operator", { error: "Invalid status" }, { status: 400 });
   }
 
-  if (
-    becamePatient !== undefined &&
-    typeof becamePatient !== "boolean"
-  ) {
+  if (becamePatient !== undefined && typeof becamePatient !== "boolean") {
     return jsonWithCors(
       request,
+      "operator",
       { error: "becamePatient must be a boolean" },
       { status: 400 },
     );
@@ -80,8 +83,8 @@ export async function PATCH(request: Request, context: RouteParams) {
   });
 
   if (!updated) {
-    return jsonWithCors(request, { error: "Lead not found" }, { status: 404 });
+    return jsonWithCors(request, "operator", { error: "Lead not found" }, { status: 404 });
   }
 
-  return jsonWithCors(request, { ok: true, lead: updated });
+  return jsonWithCors(request, "operator", { ok: true, lead: updated });
 }

@@ -200,7 +200,7 @@ export function LeadsDashboard({ examples }: LeadsDashboardProps) {
             note={
               unlocked
                 ? "Ingested from the dedicated LP form"
-                : "Unlock with the ingest secret to load live rows"
+                : "Unlock with the operator secret to load live rows"
             }
             icon={<UserPlus className="h-4 w-4 text-teal-700" />}
           />
@@ -229,9 +229,9 @@ export function LeadsDashboard({ examples }: LeadsDashboardProps) {
             <CardTitle className="text-base">Live ingest</CardTitle>
             <CardDescription>
               The public table never dumps live PII. EXAMPLE rows are always
-              visible. Live rows appear only after the shared ingest secret is
-              entered. The dedicated ChatGPT LP is being built in a separate
-              repo and is not wired yet.
+              visible. Live rows require <code>LEADS_OPERATOR_SECRET</code>,
+              which is separate from the form ingest secret. The dedicated
+              ChatGPT LP is being built in a separate repo and is not wired yet.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
@@ -263,7 +263,7 @@ export function LeadsDashboard({ examples }: LeadsDashboardProps) {
                   autoComplete="off"
                   value={operatorKey}
                   onChange={(event) => setOperatorKey(event.target.value)}
-                  placeholder="LEADS_INGEST_SECRET"
+                  placeholder="LEADS_OPERATOR_SECRET"
                   className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-sm outline-none focus-visible:border-teal-400"
                 />
                 <Button type="submit" disabled={loadingLive || !operatorKey}>

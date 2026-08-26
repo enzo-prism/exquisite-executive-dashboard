@@ -21,7 +21,7 @@ Production host: `https://exquisite-executive-dashboard.vercel.app` (or the prev
 
 ### Auth
 
-Shared secret only. No second login system.
+Write-only ingest secret. This key cannot list or update the roster.
 
 Send either:
 
@@ -37,7 +37,9 @@ x-leads-ingest-secret: <LEADS_INGEST_SECRET>
 
 If `LEADS_INGEST_SECRET` is unset, ingest returns `503`. A missing or wrong secret returns `401`.
 
-Set the same value on Vercel for this project (Preview + Production) before wiring the LP. Do not commit the secret.
+Call this endpoint from a **server route** on the dedicated LP. Do not put `LEADS_INGEST_SECRET` in public browser JavaScript. CORS allows `POST` only from `exquisitedentistryla.com` (www and apex), plus optional `LEADS_INGEST_ORIGINS`. `GET` and `PATCH` are not CORS-allowed from the marketing site.
+
+Set `LEADS_INGEST_SECRET` and a **different** `LEADS_OPERATOR_SECRET` on Vercel before wiring the LP. Do not commit the secrets.
 
 ### Body
 
@@ -123,11 +125,13 @@ Do not send real patient data in examples.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/leads` | ingest secret | Live leads only. Never a public PII dump. |
-| `PATCH` | `/api/leads/:id` | ingest secret | Update `status` and/or `becamePatient` on a live row. EXAMPLE rows are read-only via API. |
+| `GET` | `/api/leads` | `LEADS_OPERATOR_SECRET` only | Live leads. Same-origin dashboard unlock. Never a public PII dump. |
+| `PATCH` | `/api/leads/:id` | `LEADS_OPERATOR_SECRET` only | Update `status` and/or `becamePatient` on a live row. EXAMPLE rows are read-only via API. |
 | `GET` | `/leads` | none | Table UI. EXAMPLE rows only until the operator key unlocks live rows. |
 
-CORS is open to `exquisitedentistryla.com` (www and apex) and this dashboard host. Extra origins can be added with `LEADS_INGEST_ORIGINS` (comma-separated). There is no geo-block.
+`LEADS_INGEST_SECRET` is rejected on the operator routes. If the two secrets are identical, operator routes return `503` so ingest write access cannot be reused as roster admin.
+
+Operator requests are same-origin only: no `Access-Control-Allow-Origin` for the marketing site. There is no geo-block.
 
 ## Persistence
 
