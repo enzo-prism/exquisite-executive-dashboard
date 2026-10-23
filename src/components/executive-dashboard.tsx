@@ -31,6 +31,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { DashboardNav } from "@/components/dashboard-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -114,11 +115,14 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                 </p>
               </div>
             </div>
-            <DateWindowFilter
-              onChange={setSelectedWindow}
-              options={windowOptions}
-              selectedWindow={selectedWindow}
-            />
+            <div className="flex flex-col items-start gap-3 lg:items-end">
+              <DashboardNav current="overview" />
+              <DateWindowFilter
+                onChange={setSelectedWindow}
+                options={windowOptions}
+                selectedWindow={selectedWindow}
+              />
+            </div>
           </div>
         </div>
       </section>

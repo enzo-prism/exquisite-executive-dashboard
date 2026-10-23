@@ -4,6 +4,8 @@ Public executive dashboard for Michael Churchill and Exquisite Dentistry. It com
 
 Production: <https://exquisite-executive-dashboard.vercel.app/>
 
+ChatGPT leads: <https://exquisite-executive-dashboard.vercel.app/leads>
+
 ## Stack
 
 - Next.js App Router
@@ -22,6 +24,14 @@ Production: <https://exquisite-executive-dashboard.vercel.app/>
 - Timeline source window: latest 90 days from the GitHub API
 
 Google and GitHub credentials are local-only. Vercel serves the committed snapshot at `src/data/dashboard-snapshot.json`; it does not run `gogcli` in production.
+
+## ChatGPT leads
+
+`/leads` tracks ChatGPT-ad inquiries for Michael Churchill: name, email, phone, submitted time, source / UTM / ad id, follow-up status, and whether they became a patient.
+
+The dedicated LP + form is built in `enzo-prism/exquisite-dentistry`. This repo exposes `POST /api/leads/ingest` with a write-only `LEADS_INGEST_SECRET` so that form can be wired next from a server route. Roster read/update uses a separate `LEADS_OPERATOR_SECRET`. Existing site contact still uses Formspree (`xkgknpkl`) and is not treated as ChatGPT demand. Exact ingest contract: [docs/chatgpt-leads-ingest.md](docs/chatgpt-leads-ingest.md).
+
+The public `/leads` table shows clearly labeled EXAMPLE rows only. Live PII is not listed until an operator enters `LEADS_OPERATOR_SECRET`. Spend stays off. Do not email Michael or Nancy from this app.
 
 ## Local Workflow
 
@@ -85,6 +95,9 @@ Current implementation checks:
 - Browser check confirms 3 rendered chart surfaces
 - Browser check confirms timeline cards stay in a single-column list and detail dialogs contain no visible date/time strings
 - Snapshot reconciliation confirms displayed GA4/GSC KPI totals match `src/data/dashboard-snapshot.json`
+- `/leads` renders the ChatGPT roster with EXAMPLE-only rows until the operator secret is entered
+- `POST /api/leads/ingest` rejects unauthenticated requests and accepts the documented JSON contract
+- `GET /api/leads` rejects the ingest secret and requires a distinct operator secret
 
 ## Known Caveat
 

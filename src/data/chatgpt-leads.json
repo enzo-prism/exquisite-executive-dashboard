@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-08-26T17:00:00.000Z",
+  "note": "EXAMPLE rows only. Not real patients. Live ChatGPT leads arrive via POST /api/leads/ingest.",
+  "leads": [
+    {
+      "id": "example-chatgpt-lead-001",
+      "name": "EXAMPLE — Jordan Sample",
+      "email": "jordan.sample@example.com",
+      "phone": "(555) 010-0142",
+      "source": "chatgpt",
+      "utmSource": "chatgpt",
+      "utmMedium": "cpc",
+      "utmCampaign": "example-veneers-pilot",
+      "utmContent": "example-creative-a",
+      "utmTerm": "",
+      "adId": "EXAMPLE-AD-000",
+      "landingPage": "/chatgpt-consult (dedicated LP not live yet)",
+      "notes": "EXAMPLE row for the Aug 31 review. Not a real patient.",
+      "submittedAt": "2026-08-24T18:30:00.000Z",
+      "status": "new",
+      "becamePatient": false,
+      "example": true,
+      "createdAt": "2026-08-24T18:30:00.000Z",
+      "updatedAt": "2026-08-24T18:30:00.000Z"
+    },
+    {
+      "id": "example-chatgpt-lead-002",
+      "name": "EXAMPLE — Riley Demo",
+      "email": "riley.demo@example.com",
+      "phone": "(555) 010-0199",
+      "source": "chatgpt",
+      "utmSource": "chatgpt",
+      "utmMedium": "cpc",
+      "utmCampaign": "example-veneers-pilot",
+      "utmContent": "example-creative-b",
+      "utmTerm": "",
+      "adId": "EXAMPLE-AD-001",
+      "landingPage": "/chatgpt-consult (dedicated LP not live yet)",
+      "notes": "EXAMPLE row showing a contacted follow-up. Not a real patient.",
+      "submittedAt": "2026-08-25T16:05:00.000Z",
+      "status": "contacted",
+      "becamePatient": false,
+      "example": true,
+      "createdAt": "2026-08-25T16:05:00.000Z",
+      "updatedAt": "2026-08-25T16:45:00.000Z"
+    }
+  ]
+}

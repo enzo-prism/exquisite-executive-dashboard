@@ -40,3 +40,6 @@ Chrome verification confirmed:
 - Timeline card text contains no date/time-looking strings
 - Dialog detail text contains no date/time-looking strings
 - Console had no useful warnings or page errors after filtering extension/dev-only messages
+- `/leads` shows the ChatGPT roster with EXAMPLE-labeled sample rows and 0 live leads
+- Ingest secret cannot unlock `GET /api/leads`; operator secret is required and must differ
+- Overview and ChatGPT Leads navigation stays consistent across `/` and `/leads`
