@@ -1,42 +1,12 @@
-# Verification Log
+# Verification log
 
-This dashboard was verified with local snapshot data and production deployment checks.
+## November 8, 2026 refresh
 
-## Current Snapshot
+- GA4: canonical website hosts, property 498175984, periods through November 7.
+- GSC: domain property, finalized web-search totals, matched complete periods through November 7.
+- Exact 30-day baseline: 28 unique active users; 43 sessions; 0 GA4 key events; 95 search clicks; 9,321 impressions; average position 22.8.
+- Website timeline: 19 / 47 / 73 commits in 30 / 60 / 90-day views; fully paginated source history.
+- Paid status: existing veneer campaign active and Serving at November 8, 21:16 PST verification, $750 total / $3.50 CPC / November 25 23:59 PST end. This is not a live metrics feed.
+- No patient data or credentials in the snapshot. Landing-path query strings omitted.
 
-- GA4 property: `properties/498175984`
-- GSC site: `sc-domain:exquisitedentistryla.com`
-- GitHub source repo: `enzo-prism/exquisite-dentistry`
-- Dashboard windows: last 30, 60, and 90 days
-- Timeline source window: latest 90 days
-- Timeline commits reviewed: 5 in the 30-day view, 11 in the 60-day view, 23 in the 90-day view
-
-## Commands
-
-```bash
-npm run refresh:data
-npm run lint
-npm run build
-```
-
-## Production
-
-- Project: `exquisite-executive-dashboard`
-- Public URL: `https://exquisite-executive-dashboard.vercel.app/`
-- Vercel framework preset: Next.js
-- Deployment protection: SSO disabled for public v1 access
-- GitHub repo connected: `enzo-prism/exquisite-executive-dashboard`
-
-## Browser QA
-
-Chrome verification confirmed:
-
-- Main dashboard title renders
-- Last 30, Last 60, and Last 90 day filters render at the top of the app
-- Filter clicks update the active dashboard window and website-update count
-- Three main Recharts visualizations render
-- Timeline cards render as one full-width, one-column list
-- First timeline card opens a detail dialog
-- Timeline card text contains no date/time-looking strings
-- Dialog detail text contains no date/time-looking strings
-- Console had no useful warnings or page errors after filtering extension/dev-only messages
+Local checks: `npm test`, `npm run lint`, `npm run build`; browser filters, charts, source disclosure, timeline modal and mobile overflow. Production checks must be recorded after publication; local checks alone do not establish live state.

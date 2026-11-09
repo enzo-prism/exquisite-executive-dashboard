@@ -85,6 +85,13 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
     snapshot.windows[defaultWindow] ? defaultWindow : "30",
   );
   const activeWindow = snapshot.windows[selectedWindow] ?? snapshot.windows["30"];
+  const [snapshotStale, setSnapshotStale] = useState(false);
+  useEffect(() => {
+    const check = () => setSnapshotStale(Date.now() - Date.parse(snapshot.generatedAt) > 48 * 60 * 60 * 1000);
+    check();
+    const timer = window.setInterval(check, 60_000);
+    return () => window.clearInterval(timer);
+  }, [snapshot.generatedAt]);
 
   return (
     <main className="min-h-screen bg-[#f6f7f5] text-slate-950">
@@ -124,6 +131,21 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
       </section>
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <section aria-label="Data freshness" className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+          <p>Snapshot refreshed {pacificDate(snapshot.generatedAt)}. GA4: {activeWindow.range.start}–{activeWindow.range.end} (Pacific).
+            {activeWindow.searchRange ? ` Search Console final data: ${activeWindow.searchRange.start}–${activeWindow.searchRange.end}.` : ""}</p>
+          {snapshotStale ? <p role="status" className="font-medium text-amber-800">This snapshot is over 48 hours old. The figures below have not refreshed automatically.</p> : null}
+          <details className="mt-1"><summary className="cursor-pointer font-medium text-slate-800">Sources and measurement limits</summary>
+            {[...(activeWindow.qualityNotes ?? []), ...(snapshot.source.validationNotes ?? [])].map(note => <p key={note} className="mt-2">{note}</p>)}
+            <p className="mt-2">GA4: {snapshot.source.ga4Name}. Search Console: {snapshot.source.gscSite}. Website updates reflect repository commits, not a guarantee that each change is deployed.</p>
+          </details>
+        </section>
+        {snapshot.campaignStatus ? <section aria-label="Paid campaign status" className="rounded-md border border-teal-200 bg-teal-50 px-4 py-4 text-sm leading-6 text-slate-700">
+          <h2 className="font-semibold text-slate-950">ChatGPT veneer campaign</h2>
+          <p>{snapshot.campaignStatus.chatgpt} · verified {pacificDate(snapshot.campaignStatus.verifiedAt)}.</p>
+          <p>${snapshot.campaignStatus.totalBudgetUsd} total budget · ${snapshot.campaignStatus.maximumCpcUsd.toFixed(2)} maximum CPC · ends {pacificDate(snapshot.campaignStatus.endsAt)} · automatic creative enhancements {snapshot.campaignStatus.creativeEnhancements.toLowerCase()}.</p>
+          <p>{snapshot.campaignStatus.note}</p>
+        </section> : null}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {activeWindow.kpis.map((kpi) => (
             <KpiCard key={kpi.label} kpi={kpi} />
@@ -140,7 +162,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                     Traffic and Search Trend
                   </CardTitle>
                   <CardDescription>
-                    Daily GA4 users, sessions, conversions, and GSC clicks for the snapshot window.
+                    Daily GA4 users, sessions, key events, and Search Console clicks. Unpublished search days remain blank.
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="rounded-sm">
@@ -198,7 +220,7 @@ export function ExecutiveDashboard({ snapshot }: ExecutiveDashboardProps) {
                       <Area
                         type="monotone"
                         dataKey="conversions"
-                        name="Conversions"
+                        name="Key events"
                         stroke="#be123c"
                         fill="transparent"
                         strokeWidth={2}
@@ -385,6 +407,10 @@ function DateWindowFilter({
   );
 }
 
+function pacificDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value));
+}
+
 function isWindowKey(value: string): value is WindowKey {
   return value === "30" || value === "60" || value === "90";
 }
@@ -461,7 +487,7 @@ function RankingCard({
               <TableHead>Page</TableHead>
               <TableHead className="text-right">Users</TableHead>
               <TableHead className="text-right">Sessions</TableHead>
-              <TableHead className="text-right">Conv.</TableHead>
+              <TableHead className="text-right">Key events</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

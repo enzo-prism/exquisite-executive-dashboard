@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { calendarDate, shiftDate, rangeFor, parseGa, trendRows, cleanPath, parseGsc, TIME_ZONE } from "./reporting.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
 const account = process.env.GOGCLI_ACCOUNT ?? "enzo@design-prism.com";
-const gogcli = process.env.GOGCLI_BIN ?? "/Users/enzo/.local/bin/gogcli";
+const gogcli = process.env.GOGCLI_BIN ?? ["/Users/enzo/.local/bin/gog", "/Users/enzo/.local/bin/gogcli"].find(existsSync) ?? "gog";
 const ga4Property = process.env.GA4_PROPERTY ?? "properties/498175984";
 const ga4Name = process.env.GA4_NAME ?? "Exquisite Dentistry - Live";
 const gscSite = process.env.GSC_SITE ?? "sc-domain:exquisitedentistryla.com";
@@ -17,45 +18,8 @@ const githubRepo =
 const dayMs = 24 * 60 * 60 * 1000;
 const windowDays = [30, 60, 90];
 const today = new Date();
-const endDate = shiftLocalDate(today, -1);
+const endDate = shiftDate(calendarDate(today), -1);
 const maxCommitWindowDays = Math.max(...windowDays);
-
-function shiftLocalDate(date, days) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-function dateString(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function rangeFor(days) {
-  const startDate = shiftLocalDate(endDate, -(days - 1));
-  const previousEndDate = shiftLocalDate(startDate, -1);
-  const previousStartDate = shiftLocalDate(previousEndDate, -(days - 1));
-
-  return {
-    days,
-    start: dateString(startDate),
-    end: dateString(endDate),
-    previousStart: dateString(previousStartDate),
-    previousEnd: dateString(previousEndDate),
-    startDate,
-  };
-}
-
-function labelDate(value) {
-  const normalized = value.length === 8
-    ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
-    : value;
-  const date = new Date(`${normalized}T12:00:00`);
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
 
 function runJson(command, args) {
   console.log(`Running ${path.basename(command)} ${args.slice(0, 4).join(" ")}...`);
@@ -69,21 +33,20 @@ function runJson(command, args) {
 }
 
 function gaReport({ from, to, metrics, dimensions, max = "250000" }) {
-  return runJson(gogcli, [
-    "analytics",
-    "report",
-    ga4Property,
-    "--account",
-    account,
-    `--from=${from}`,
-    `--to=${to}`,
-    `--metrics=${metrics.join(",")}`,
-    `--dimensions=${dimensions.join(",")}`,
-    `--max=${max}`,
-    "--json",
-    "--no-input",
-  ]);
+  const body = {
+    dateRanges: [{ startDate: from, endDate: to }],
+    metrics: metrics.map(name => ({ name })),
+    dimensions: dimensions.map(name => ({ name })),
+    dimensionFilter: { filter: { fieldName: "hostName", inListFilter: { values: ["exquisitedentistryla.com", "www.exquisitedentistryla.com"], caseSensitive: false } } },
+    limit: max,
+    ...(dimensions.length ? { orderBys: [{ metric: { metricName: metrics.includes("sessions") ? "sessions" : metrics[0] }, desc: true }] } : {}),
+  };
+  const report = runJson(gogcli, ["api", "call", "analyticsdata", "v1beta", "properties.runReport", "--params", JSON.stringify({ property: ga4Property }), "--body", JSON.stringify(body), "--account", account, "--scope", "https://www.googleapis.com/auth/analytics.readonly", "--json", "--no-input", "--readonly"]);
+  if (report.metadata?.samplingMetadatas?.length || report.metadata?.subjectToThresholding || report.metadata?.dataLossFromOtherRow) qualityWarnings.add("GA4 reports sampling, thresholding, or grouped data limitations; totals and breakdowns may differ.");
+  return parseGa(report, dimensions, metrics);
 }
+
+const qualityWarnings = new Set();
 
 function gscQuery({ from, to, dimensions, max = "25000" }) {
   return runJson(gogcli, [
@@ -95,56 +58,17 @@ function gscQuery({ from, to, dimensions, max = "25000" }) {
     `--from=${from}`,
     `--to=${to}`,
     `--dimensions=${dimensions.join(",")}`,
+    "--data-state=FINAL",
+    `--aggregation=${dimensions.includes("PAGE") ? "BY_PAGE" : "BY_PROPERTY"}`,
+    "--readonly",
     `--max=${max}`,
     "--json",
     "--no-input",
   ]);
 }
 
-function ghApi(endpoint) {
-  return runJson("gh", ["api", "-X", "GET", endpoint]);
-}
-
-function parseGa(report) {
-  const dimensions = report.dimensions ?? report.dimensionHeaders?.map((d) => d.name) ?? [];
-  const metrics = report.metrics ?? report.metricHeaders?.map((m) => m.name) ?? [];
-  return (report.rows ?? []).map((row) => {
-    const parsed = {};
-    dimensions.forEach((name, index) => {
-      parsed[name] = row.dimensionValues?.[index]?.value ?? "";
-    });
-    metrics.forEach((name, index) => {
-      parsed[name] = Number(row.metricValues?.[index]?.value ?? 0);
-    });
-    return parsed;
-  });
-}
-
-function parseGsc(report, dimensions) {
-  return (report.rows ?? []).map((row) => {
-    const parsed = {
-      clicks: Number(row.clicks ?? 0),
-      impressions: Number(row.impressions ?? 0),
-      ctr: Number(row.ctr ?? 0),
-      position: Number(row.position ?? 0),
-    };
-    dimensions.forEach((name, index) => {
-      parsed[name.toLowerCase()] = row.keys?.[index] ?? "";
-    });
-    return parsed;
-  });
-}
-
 function sum(rows, key) {
   return rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
-}
-
-function weightedPosition(rows) {
-  const impressions = sum(rows, "impressions");
-  if (!impressions) return 0;
-  return rows.reduce((total, row) => {
-    return total + Number(row.position ?? 0) * Number(row.impressions ?? 0);
-  }, 0) / impressions;
 }
 
 function kpi({ label, current, previous, format, note, lowerIsBetter = false }) {
@@ -169,18 +93,6 @@ function roundForFormat(value, format) {
   if (format === "percent") return Number(value.toFixed(4));
   if (format === "decimal") return Number(value.toFixed(1));
   return Math.round(value);
-}
-
-function cleanPath(value) {
-  if (!value) return "/";
-  try {
-    const url = value.startsWith("http")
-      ? new URL(value)
-      : new URL(value, "https://exquisitedentistryla.com");
-    return url.pathname + url.search;
-  } catch {
-    return value;
-  }
 }
 
 function categoryFor(title, files) {
@@ -310,204 +222,54 @@ function sanitizeTimelineText(value) {
     .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, "[time]");
 }
 
-function buildTrafficTrend(gaDaily, gscDaily) {
-  const gaByDate = new Map(
-    gaDaily.map((row) => {
-      const date = `${row.date.slice(0, 4)}-${row.date.slice(4, 6)}-${row.date.slice(6, 8)}`;
-      return [date, row];
-    }),
-  );
-  const gscByDate = new Map(gscDaily.map((row) => [row.date, row]));
-  const allDates = Array.from(new Set([...gaByDate.keys(), ...gscByDate.keys()])).sort();
-
-  return allDates.map((date) => {
-    const ga = gaByDate.get(date) ?? {};
-    const gsc = gscByDate.get(date) ?? {};
-    return {
-      date,
-      label: labelDate(date),
-      activeUsers: Math.round(Number(ga.activeUsers ?? 0)),
-      sessions: Math.round(Number(ga.sessions ?? 0)),
-      conversions: Math.round(Number(ga.conversions ?? 0)),
-      clicks: Math.round(Number(gsc.clicks ?? 0)),
-      impressions: Math.round(Number(gsc.impressions ?? 0)),
-    };
-  });
-}
-
-function buildWindow(range, allTimeline) {
-  const gaMetrics = ["activeUsers", "sessions", "totalUsers", "eventCount", "conversions"];
-  const gaDaily = parseGa(
-    gaReport({ from: range.start, to: range.end, metrics: gaMetrics, dimensions: ["date"] }),
-  );
-  const gaPreviousDaily = parseGa(
-    gaReport({
-      from: range.previousStart,
-      to: range.previousEnd,
-      metrics: gaMetrics,
-      dimensions: ["date"],
-    }),
-  );
-  const channels = parseGa(
-    gaReport({
-      from: range.start,
-      to: range.end,
-      metrics: gaMetrics,
-      dimensions: ["sessionDefaultChannelGroup"],
-      max: "100",
-    }),
-  );
-  const landingPages = parseGa(
-    gaReport({
-      from: range.start,
-      to: range.end,
-      metrics: ["activeUsers", "sessions", "conversions"],
-      dimensions: ["landingPagePlusQueryString"],
-      max: "30",
-    }),
-  );
-
-  const gscDaily = parseGsc(
-    gscQuery({ from: range.start, to: range.end, dimensions: ["DATE"], max: "25000" }),
-    ["DATE"],
-  );
-  const gscPreviousDaily = parseGsc(
-    gscQuery({
-      from: range.previousStart,
-      to: range.previousEnd,
-      dimensions: ["DATE"],
-      max: "25000",
-    }),
-    ["DATE"],
-  );
-  const gscQueries = parseGsc(
-    gscQuery({ from: range.start, to: range.end, dimensions: ["QUERY"], max: "30" }),
-    ["QUERY"],
-  );
-  const gscPages = parseGsc(
-    gscQuery({ from: range.start, to: range.end, dimensions: ["PAGE"], max: "30" }),
-    ["PAGE"],
-  );
-  const gscQueryPages = parseGsc(
-    gscQuery({ from: range.start, to: range.end, dimensions: ["QUERY", "PAGE"], max: "40" }),
-    ["QUERY", "PAGE"],
-  );
-
-  const currentSessions = sum(gaDaily, "sessions");
-  const channelMix = channels
-    .map((row) => ({
-      channel: row.sessionDefaultChannelGroup || "Unassigned",
-      activeUsers: Math.round(Number(row.activeUsers ?? 0)),
-      sessions: Math.round(Number(row.sessions ?? 0)),
-      conversions: Math.round(Number(row.conversions ?? 0)),
-      share: currentSessions ? Number((Number(row.sessions ?? 0) / currentSessions).toFixed(4)) : 0,
-    }))
-    .sort((a, b) => b.sessions - a.sessions);
-  const channelSessionTotal = sum(channelMix, "sessions");
-  if (channelSessionTotal < currentSessions) {
-    channelMix.push({
-      channel: "Other / thresholded",
-      activeUsers: 0,
-      sessions: currentSessions - channelSessionTotal,
-      conversions: 0,
-      share: Number(((currentSessions - channelSessionTotal) / currentSessions).toFixed(4)),
-    });
-  }
-
+function buildWindow(range, allTimeline, searchEnd) {
+  const searchRange = rangeFor(range.days, searchEnd);
+  const gaMetrics = ["activeUsers", "sessions", "keyEvents"];
+  const readGa = (from, to, dimensions, metrics = gaMetrics, max) => gaReport({ from, to, dimensions, metrics, max });
+  const current = readGa(range.start, range.end, [])[0] ?? { activeUsers: 0, sessions: 0, keyEvents: 0 };
+  const previous = readGa(range.previousStart, range.previousEnd, [])[0] ?? { activeUsers: 0, sessions: 0, keyEvents: 0 };
+  const gaDaily = readGa(range.start, range.end, ["date"]);
+  const channels = readGa(range.start, range.end, ["sessionDefaultChannelGroup"], gaMetrics, "100");
+  const landingPages = readGa(range.start, range.end, ["landingPage"], gaMetrics, "25000");
+  const search = (from, to, dimensions, max = "25000") => parseGsc(gscQuery({ from, to, dimensions, max }), dimensions);
+  const currentSearch = search(searchRange.start, searchRange.end, [])[0];
+  const previousSearch = search(searchRange.previousStart, searchRange.previousEnd, [])[0];
+  if (!currentSearch || !previousSearch) throw new Error("Missing Search Console period totals; existing snapshot retained.");
+  const gscDaily = search(range.start, searchEnd, ["DATE"]);
+  const queries = search(searchRange.start, searchRange.end, ["QUERY"], "30");
+  const pages = search(searchRange.start, searchRange.end, ["PAGE"], "30");
+  const pairs = search(searchRange.start, searchRange.end, ["QUERY", "PAGE"], "40");
+  const periodNote = `GA4, ${range.start}–${range.end}; previous ${range.previousStart}–${range.previousEnd}. Canonical website hosts only.`;
+  const searchNote = `GSC final web-search data, ${searchRange.start}–${searchRange.end}; previous ${searchRange.previousStart}–${searchRange.previousEnd}. Equal ${range.days}-day periods.`;
+  const channelMix = channels.map(row => ({ channel: row.sessionDefaultChannelGroup || "Unassigned", activeUsers: row.activeUsers, sessions: row.sessions, conversions: row.keyEvents, share: current.sessions ? row.sessions / current.sessions : 0 })).sort((a, b) => b.sessions - a.sessions);
+  const channelDifference = sum(channelMix, "sessions") - current.sessions;
+  const searchRows = rows => rows.map(row => ({ ...row, ...(row.page ? { page: cleanPath(row.page) } : {}), position: Number(row.position.toFixed(1)) }));
   return {
-    days: range.days,
-    range: {
-      start: range.start,
-      end: range.end,
-    },
+    days: range.days, range: { start: range.start, end: range.end }, searchRange,
+    qualityNotes: ["Key events are GA4-configured actions, not verified inquiries, booked consultations, patients or revenue. The paid ChatGPT landing page intentionally has no GA4 tracking.", "Search tables omit anonymized queries and are limited to top rows; they do not sum to property totals.", ...(channelDifference ? [`Channel sessions differ from the period total by ${channelDifference}; no balancing or estimated rows were added.`] : [])],
     kpis: [
-      kpi({
-        label: "Active users",
-        current: sum(gaDaily, "activeUsers"),
-        previous: sum(gaPreviousDaily, "activeUsers"),
-        format: "number",
-        note: "GA4 active users",
-      }),
-      kpi({
-        label: "Sessions",
-        current: currentSessions,
-        previous: sum(gaPreviousDaily, "sessions"),
-        format: "number",
-        note: "GA4 sessions",
-      }),
-      kpi({
-        label: "Conversions",
-        current: sum(gaDaily, "conversions"),
-        previous: sum(gaPreviousDaily, "conversions"),
-        format: "number",
-        note: "GA4 conversions",
-      }),
-      kpi({
-        label: "Search clicks",
-        current: sum(gscDaily, "clicks"),
-        previous: sum(gscPreviousDaily, "clicks"),
-        format: "number",
-        note: "Google Search Console clicks",
-      }),
-      kpi({
-        label: "Search impressions",
-        current: sum(gscDaily, "impressions"),
-        previous: sum(gscPreviousDaily, "impressions"),
-        format: "number",
-        note: "Google Search Console impressions",
-      }),
-      kpi({
-        label: "Avg. search position",
-        current: weightedPosition(gscDaily),
-        previous: weightedPosition(gscPreviousDaily),
-        format: "decimal",
-        note: "Weighted by impressions",
-        lowerIsBetter: true,
-      }),
+      kpi({ label: "Active users", current: current.activeUsers, previous: previous.activeUsers, format: "number", note: `${periodNote} Unique users for the full period; never a sum of daily users.` }),
+      kpi({ label: "Sessions", current: current.sessions, previous: previous.sessions, format: "number", note: periodNote }),
+      kpi({ label: "Key events", current: current.keyEvents, previous: previous.keyEvents, format: "number", note: `${periodNote} Configured website actions, not confirmed leads or appointments.` }),
+      kpi({ label: "Search clicks", current: currentSearch.clicks, previous: previousSearch.clicks, format: "number", note: searchNote }),
+      kpi({ label: "Search impressions", current: currentSearch.impressions, previous: previousSearch.impressions, format: "number", note: searchNote }),
+      kpi({ label: "Avg. search position", current: currentSearch.position, previous: previousSearch.position, format: "decimal", note: searchNote, lowerIsBetter: true }),
     ],
-    trafficTrend: buildTrafficTrend(gaDaily, gscDaily),
-    channelMix,
-    landingPages: landingPages.map((row) => ({
-      path: cleanPath(row.landingPagePlusQueryString),
-      activeUsers: Math.round(Number(row.activeUsers ?? 0)),
-      sessions: Math.round(Number(row.sessions ?? 0)),
-      conversions: Math.round(Number(row.conversions ?? 0)),
-    })),
-    gscQueries: gscQueries.map((row) => ({
-      query: row.query,
-      clicks: Math.round(row.clicks),
-      impressions: Math.round(row.impressions),
-      ctr: Number(row.ctr.toFixed(4)),
-      position: Number(row.position.toFixed(1)),
-    })),
-    gscPages: gscPages.map((row) => ({
-      page: cleanPath(row.page),
-      clicks: Math.round(row.clicks),
-      impressions: Math.round(row.impressions),
-      ctr: Number(row.ctr.toFixed(4)),
-      position: Number(row.position.toFixed(1)),
-    })),
-    gscQueryPages: gscQueryPages.map((row) => ({
-      query: row.query,
-      page: cleanPath(row.page),
-      clicks: Math.round(row.clicks),
-      impressions: Math.round(row.impressions),
-      ctr: Number(row.ctr.toFixed(4)),
-      position: Number(row.position.toFixed(1)),
-    })),
-    timeline: allTimeline.filter((item) => item.ageDays <= range.days),
+    trafficTrend: trendRows(range, gaDaily, gscDaily, searchEnd), channelMix,
+    landingPages: landingPages.sort((a,b) => b.sessions-a.sessions).slice(0, 30).map(row => ({ path: cleanPath(row.landingPage), activeUsers: row.activeUsers, sessions: row.sessions, conversions: row.keyEvents })),
+    gscQueries: searchRows(queries), gscPages: searchRows(pages), gscQueryPages: searchRows(pairs),
+    timeline: allTimeline.filter(item => item.ageDays <= range.days),
   };
 }
 
 function buildTimeline() {
-  const commitSince = shiftLocalDate(today, -maxCommitWindowDays);
-  const commits = ghApi(
-    `repos/${githubRepo}/commits?since=${dateString(commitSince)}T00:00:00Z&per_page=100`,
-  );
+  const commitSince = shiftDate(calendarDate(today), -maxCommitWindowDays);
+  const commits = runJson("gh", ["api", "--paginate", "--slurp", `repos/${githubRepo}/commits?since=${commitSince}T00:00:00Z&per_page=100`]).flat();
 
   return commits
     .map((commit, index) => {
-      const detail = ghApi(`repos/${githubRepo}/commits/${commit.sha}`);
+      const detailPages = runJson("gh", ["api", "--paginate", "--slurp", `repos/${githubRepo}/commits/${commit.sha}?per_page=100`]);
+      const detail = { ...detailPages[0], files: detailPages.flatMap(page => page.files ?? []) };
       const files = (detail.files ?? []).map((file) => ({
         filename: sanitizeTimelineText(file.filename),
         status: file.status,
@@ -517,7 +279,7 @@ function buildTimeline() {
       }));
       const title = commit.commit.message.split("\n")[0];
       const classification = categoryFor(title, files);
-      const commitDate = new Date(commit.commit.author.date);
+      const commitDate = new Date(commit.commit.committer.date);
       const ageDays = Math.max(0, Math.floor((today.getTime() - commitDate.getTime()) / dayMs));
 
       return {
@@ -540,18 +302,25 @@ function buildTimeline() {
     .sort((a, b) => a.order - b.order);
 }
 
+const finalSearchDays = parseGsc(gscQuery({ from: shiftDate(endDate, -14), to: endDate, dimensions: ["DATE"] }), ["DATE"]);
+const searchEnd = finalSearchDays.map(row => row.date).sort().at(-1);
+if (!searchEnd) throw new Error("No finalized search data; existing snapshot retained.");
 const allTimeline = buildTimeline();
 const windows = Object.fromEntries(
   windowDays.map((days) => {
-    const range = rangeFor(days);
-    return [String(days), buildWindow(range, allTimeline)];
+    const range = rangeFor(days, endDate);
+    return [String(days), buildWindow(range, allTimeline, searchEnd)];
   }),
 );
-const defaultRange = rangeFor(30);
+const defaultRange = rangeFor(30, endDate);
 
 const snapshot = {
   generatedAt: new Date().toISOString(),
+  campaignStatus: JSON.parse(readFileSync(path.join(root, "src/data/campaign-status.json"), "utf8")),
   source: {
+    timeZone: TIME_ZONE,
+    latestSourceDates: { ga4: endDate, gscFinal: searchEnd },
+    validationNotes: [...qualityWarnings],
     ga4Property,
     ga4Name,
     gscSite,
@@ -570,7 +339,9 @@ const snapshot = {
 
 const outputPath = path.join(root, "src/data/dashboard-snapshot.json");
 mkdirSync(path.dirname(outputPath), { recursive: true });
-writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+const temporaryPath = `${outputPath}.tmp`;
+writeFileSync(temporaryPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+renameSync(temporaryPath, outputPath);
 console.log(`Wrote ${path.relative(root, outputPath)}`);
 console.log(
   `Snapshot: ${Object.keys(windows).length} windows, ${allTimeline.length} website changes across ${maxCommitWindowDays} days.`,

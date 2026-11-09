@@ -16,8 +16,8 @@ export type DailyTrafficRow = {
   activeUsers: number;
   sessions: number;
   conversions: number;
-  clicks: number;
-  impressions: number;
+  clicks: number | null;
+  impressions: number | null;
 };
 
 export type ChannelRow = {
@@ -77,6 +77,8 @@ export type DashboardWindow = {
     start: string;
     end: string;
   };
+  searchRange?: { start: string; end: string; previousStart: string; previousEnd: string };
+  qualityNotes?: string[];
   kpis: Kpi[];
   trafficTrend: DailyTrafficRow[];
   channelMix: ChannelRow[];
@@ -89,6 +91,15 @@ export type DashboardWindow = {
 
 export type DashboardSnapshot = {
   generatedAt: string;
+  campaignStatus?: {
+    verifiedAt: string;
+    chatgpt: string;
+    totalBudgetUsd: number;
+    maximumCpcUsd: number;
+    endsAt: string;
+    creativeEnhancements: string;
+    note: string;
+  };
   source: {
     ga4Property: string;
     ga4Name: string;
@@ -102,6 +113,9 @@ export type DashboardSnapshot = {
     commitWindowDays: number;
     defaultWindowDays: number;
     availableWindowDays: number[];
+    timeZone?: string;
+    latestSourceDates?: { ga4: string; gscFinal: string };
+    validationNotes?: string[];
   };
   windows: Record<WindowKey, DashboardWindow>;
 };
