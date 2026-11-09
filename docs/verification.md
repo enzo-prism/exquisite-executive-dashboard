@@ -9,4 +9,4 @@
 - Paid status: existing veneer campaign active and Serving at November 8, 21:16 PST verification, $750 total / $3.50 CPC / November 25 23:59 PST end. This is not a live metrics feed.
 - No patient data or credentials in the snapshot. Landing-path query strings omitted.
 
-Local checks: `npm test`, `npm run lint`, `npm run build`; browser filters, charts, source disclosure, timeline modal and mobile overflow. Production checks must be recorded after publication; local checks alone do not establish live state.
+Local checks: `npm test`, `npm run lint`, `npm run build`; browser filters, charts, source disclosure, timeline modal and mobile overflow. Production readback: staged build dpl_AsXGA5ykKAoayTQcq9vg1c3cadca reached READY and was promoted to the existing production alias. Chrome confirmed the refreshed source dates, all six 30-day KPIs, and the dated campaign panel. Immediate deployment error scan returned zero error records. No monitoring configuration was changed. Authenticated private lead-provider verification belongs to the separate lead app and remains outstanding.
